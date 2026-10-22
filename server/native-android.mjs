@@ -8,8 +8,8 @@ import { randomUUID } from 'node:crypto';
 const MAX_PROJECT_BYTES = 20 * 1024 * 1024;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_FILES = 500;
-const MAX_LOG_BYTES = 40_000;
-const BUILD_TIMEOUT_MS = 360_000;
+const MAX_LOG_BYTES = 50_000;
+const BUILD_TIMEOUT_MS = 480_000;
 const ANDROID_NS = 'http://schemas.android.com/apk/res/android';
 
 function failure(message, status = 400) {
@@ -157,9 +157,8 @@ async function writeNativeProject(root, project, report) {
   await writePath(root, 'settings.gradle', `pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }\ndependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }\nrootProject.name = 'CODEXA-Native'\ninclude ':app'\n`);
   await writePath(root, 'build.gradle', `plugins {\n    id 'com.android.application' version '8.6.1' apply false\n    id 'org.jetbrains.kotlin.android' version '2.0.20' apply false\n}\n`);
   
-  // تحسين إعدادات gradle.properties لمنع استهلاك الذاكرة وحل خطأ البروكسي والسوكيت الداخلي
   const gradleProps = [
-    'org.gradle.jvmargs=-Xmx384m -XX:+UseSerialGC -Dfile.encoding=UTF-8',
+    'org.gradle.jvmargs=-Xmx384m -Dfile.encoding=UTF-8 -XX:+UseSerialGC',
     'org.gradle.daemon=false',
     'org.gradle.parallel=false',
     'org.gradle.caching=false',
@@ -237,35 +236,85 @@ function runGradle(gradle, args, cwd, { uid, gid, home, sdk, report }) {
       ANDROID_SDK_ROOT: sdk,
       GRADLE_USER_HOME: path.join(home, '.gradle'),
       CI: 'true',
-      NO_PROXY: 'localhost,127.0.0.1',
-      no_proxy: 'localhost,127.0.0.1',
+      NO_PROXY: '*',
+      no_proxy: '*',
+      JAVA_TOOL_OPTIONS: '-Dhttp.nonProxyHosts="localhost|127.0.0.1" -Dhttps.nonProxyHosts="localhost|127.0.0.1"',
+      _JAVA_OPTIONS: '-Dhttp.nonProxyHosts="localhost|127.0.0.1" -Dhttps.nonProxyHosts="localhost|127.0.0.1"',
+      GRADLE_OPTS: '-Dhttp.nonProxyHosts="localhost|127.0.0.1" -Dhttps.nonProxyHosts="localhost|127.0.0.1" -Dorg.gradle.daemon=false',
     };
+    
+    delete env.HTTP_PROXY;
+    delete env.http_proxy;
+    delete env.HTTPS_PROXY;
+    delete env.https_proxy;
+    delete env.ALL_PROXY;
+    delete env.all_proxy;
+
     const options = { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true };
     if (Number.isInteger(uid) && Number.isInteger(gid)) { options.uid = uid; options.gid = gid; }
-    const child = spawn(gradle, args, options);
+
+    const executable = existsSync('/opt/gradle/bin/gradle') ? '/opt/gradle/bin/gradle' : gradle;
+    const finalArgs = [
+      '--no-daemon',
+      '-Dorg.gradle.daemon=false',
+      '-Dhttp.nonProxyHosts=localhost|127.0.0.1',
+      '-Dhttps.nonProxyHosts=localhost|127.0.0.1',
+      '--max-workers=1',
+      '--console=plain',
+      ':app:assembleDebug'
+    ];
+
+    const child = spawn(executable, finalArgs, options);
     let output = '';
     let settled = false;
+
+    // عداد زمني حي ومباشر يحسب الثواني ونسبة التقدم الحقيقية
+    const startTime = Date.now();
+    let currentPercent = 38;
+    let currentTask = 'بدء تجميع حزم Android وتجهيز البيئة';
+
+    const progressTicker = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      report(`⏱️ [${elapsed} ثانية · ${currentPercent}%] ${currentTask}`);
+    }, 1000);
+
     const emit = (chunk) => {
+      const text = chunk.toString();
       output = appendLimited(output, chunk);
-      const recent = chunk.toString().split(/\r?\n/).filter(Boolean).slice(-4).join(' · ');
-      if (recent) report(recent.slice(-1800));
+
+      if (text.includes(':app:preBuild')) { currentPercent = 45; currentTask = 'فحص التبعات وهيكل المشروع'; }
+      else if (text.includes(':app:generate')) { currentPercent = 55; currentTask = 'توليد ملفات الكود والموارد المترجمة'; }
+      else if (text.includes(':app:compileDebugJavaWithJavac') || text.includes(':app:compileDebugKotlin')) { currentPercent = 68; currentTask = 'ترجمة أكواد Java وKotlin الحقيقية'; }
+      else if (text.includes(':app:mergeDebugResources')) { currentPercent = 78; currentTask = 'دمج وتجهيز الموارد والصور'; }
+      else if (text.includes(':app:dexBuilderDebug') || text.includes(':app:mergeDexDebug')) { currentPercent = 88; currentTask = 'تحويل الكود إلى صيغة Dalvik Dex التنفيذية'; }
+      else if (text.includes(':app:packageDebug')) { currentPercent = 94; currentTask = 'تحزيم وتجميع ملف الـ APK النهائي'; }
+      else if (text.includes('BUILD SUCCESSFUL')) { currentPercent = 98; currentTask = 'اكتمل بناء Gradle بنجاح تام'; }
     };
+
     child.stdout.on('data', emit);
     child.stderr.on('data', emit);
+
     const killGroup = (signal) => {
       try { if (child.pid) process.kill(-child.pid, signal); else child.kill(signal); } catch { child.kill(signal); }
     };
+
     const timer = setTimeout(() => {
-      settled = true; killGroup('SIGTERM');
+      settled = true;
+      clearInterval(progressTicker);
+      killGroup('SIGTERM');
       setTimeout(() => killGroup('SIGKILL'), 1500).unref();
       reject(failure(`تجاوز بناء Gradle المهلة المحددة (${Math.round(BUILD_TIMEOUT_MS / 1000)} ثانية). لم يُنتج APK.\n${output.slice(-6000)}`, 504));
     }, BUILD_TIMEOUT_MS);
+
     child.on('error', (error) => {
       clearTimeout(timer);
+      clearInterval(progressTicker);
       if (!settled) { settled = true; reject(failure(`تعذر تشغيل Gradle: ${error.message}`, 503)); }
     });
+
     child.on('close', (code, signal) => {
       clearTimeout(timer);
+      clearInterval(progressTicker);
       if (settled) return;
       settled = true;
       if (code !== 0) reject(failure(`فشل Android Gradle${signal ? ` (${signal})` : ` برمز ${code}`}.\n${output.slice(-8000)}`, 422));
@@ -304,10 +353,16 @@ export async function buildNativeApk(project, options) {
   try {
     report('فحص ملفات Java/Kotlin/XML وإعداد مساحة بناء مؤقتة بعد الموافقة.');
     await writeNativeProject(temp, project, report);
-    await mkdir(path.join(builderHome, '.gradle'), { recursive: true });
+
+    // تنظيف أي سيرفرات daemon سابقة لمنع خطأ type tag 72 نهائياً
+    const gradleDir = path.join(builderHome, '.gradle');
+    await mkdir(gradleDir, { recursive: true });
+    await rm(path.join(gradleDir, 'daemon'), { recursive: true, force: true }).catch(() => {});
+
     await chownTree(temp, uid, gid);
-    report('يبدأ Gradle الآن ببناء التطبيق وإحضار إضافات Android المطلوبة عند أول تشغيل.');
-    await runGradle(gradle, ['--no-daemon', '-Dorg.gradle.daemon=false', '--console=plain', ':app:assembleDebug'], temp, { uid, gid, home: builderHome, sdk, report });
+    report('يبدأ Gradle الآن بتجميع وبناء التطبيق.');
+    await runGradle(gradle, [], temp, { uid, gid, home: builderHome, sdk, report });
+
     report('اكتمل التجميع؛ تحزيم الموارد جارٍ التحقق منه.');
     const apkPath = path.join(temp, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
     const info = await stat(apkPath).catch(() => null);
