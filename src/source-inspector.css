@@ -1,0 +1,156 @@
+/* Source inspector and searchable project tree */
+.tree-search{height:38px;min-height:38px;display:flex;align-items:center;gap:8px;margin:0 4px 9px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--muted)}
+.tree-search:focus-within{border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}
+.tree-search input{width:100%;min-width:0;border:0;outline:0!important;background:transparent;color:var(--text);font-size:11px}
+.tree-search input::placeholder{color:var(--muted)}
+.tree-search button{width:26px;height:26px;display:grid;place-items:center;flex:none;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer}
+.tree-search button:hover{background:var(--surface-3);color:var(--text)}
+.special-file-icon{position:relative;width:20px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:var(--muted)}
+.special-file-icon svg{width:15px;height:15px}
+.special-file-icon b{position:absolute;inset-inline-end:-3px;bottom:-3px;padding:1px 2px;border:1px solid var(--surface);border-radius:3px;background:var(--surface-2);font:700 6px/1 var(--font-mono);letter-spacing:-.05em}
+.kotlin-file-icon{color:#c579e7}.xml-file-icon{color:#e7a94e}
+.file-tab .special-file-icon b{border-color:var(--surface-2)}
+.tree-row.active .special-file-icon{color:var(--accent)}
+.source-inspector{width:100%;height:100%;min-height:0;display:flex;flex-direction:column;background:var(--surface)}
+.source-inspector-head{min-height:62px;flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--surface)}
+.source-inspector-head>div{min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.source-inspector-head b{min-width:0;max-width:clamp(120px,34vw,450px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;font:11px var(--font-mono);color:var(--text)}
+.source-inspector-head small{flex-basis:100%;margin-inline-start:3px;color:var(--muted);font-size:10px}
+.source-inspector-badge{padding:4px 7px;border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);border-radius:6px;color:var(--accent);font:700 9px var(--font-mono);letter-spacing:.08em}
+.source-copy{min-height:38px;flex:none}
+.source-inspector-editor{flex:1;min-height:0;overflow:hidden}
+.source-inspector-editor .editor-host{height:100%;min-height:0}
+.source-inspector-editor .editor-host .cm-editor{font-size:12px;line-height:1.7}
+.source-inspector-note{min-height:32px;flex:none;display:flex;align-items:center;gap:7px;padding:0 13px;border-top:1px solid var(--border-soft);background:var(--sidebar);color:var(--muted);font-size:10px}
+.source-inspector-note svg{color:var(--accent);flex:none}
+.code-loading{height:100%;display:grid;place-items:center;color:var(--muted);font-size:12px}
+@media(max-width:720px){
+  .tree-search{height:44px;min-height:44px}.tree-search input{font-size:12px}
+  .tree-row{min-height:44px}.tree-item{min-height:44px}.tree-item,.folder-item{font-size:12px}.tree-menu{opacity:1}
+  .source-inspector-head{min-height:60px;padding:8px 10px}.source-inspector-head b{max-width:38vw}
+  .source-copy{min-width:42px;min-height:42px;padding:0 10px}.source-inspector-editor .editor-host .cm-editor{font-size:12px}
+  .source-inspector-note{min-height:36px;padding-bottom:env(safe-area-inset-bottom)}
+}
+
+.apk-track-choice{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 6px}
+.apk-track-option{min-width:0;min-height:62px;display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--text-2);text-align:start;cursor:pointer}
+.apk-track-option>svg:first-child{flex:none;color:var(--muted)}
+.apk-track-option>span{min-width:0;display:flex;flex-direction:column;gap:4px}
+.apk-track-option b{color:var(--text);font-size:11px}
+.apk-track-option small{color:var(--muted);font-size:9px;line-height:1.5}
+.apk-track-option>svg:last-child{margin-inline-start:auto;flex:none;color:var(--accent)}
+.apk-track-option.selected{border-color:color-mix(in srgb,var(--accent) 50%,var(--border));background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.apk-track-option.selected>svg:first-child{color:var(--accent)}
+.apk-track-option:disabled{opacity:.42;cursor:not-allowed}
+.native-build-summary{display:flex;flex-direction:column;gap:7px;margin:10px 0 13px;padding:12px;border:1px solid color-mix(in srgb,var(--accent) 25%,var(--border));border-radius:11px;background:color-mix(in srgb,var(--accent) 4%,var(--surface-2));color:var(--text-2);font-size:11px;line-height:1.75}
+.native-build-summary>b{color:var(--text);font-size:12px}
+.native-build-summary code{direction:ltr;color:var(--accent);font:10px var(--font-mono)}
+.native-build-summary small{color:var(--muted);font-size:10px;line-height:1.7}
+@media(max-width:520px){.apk-track-choice{grid-template-columns:1fr}.apk-track-option{min-height:54px}}
+
+/* Runtime clarity, preview scope, and measurable APK build progress */
+.modal-backdrop{z-index:10000!important}
+.runtime-badge{display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:5px 9px;border:1px solid currentColor;border-radius:999px;font-size:10px;font-weight:650;line-height:1.4}
+.runtime-badge>span{width:7px;height:7px;flex:none;border-radius:50%;background:currentColor;box-shadow:0 0 9px color-mix(in srgb,currentColor 48%,transparent)}
+.runtime-web{color:#35a86b;background:color-mix(in srgb,#35a86b 9%,var(--surface))}
+.runtime-android{color:#4688dc;background:color-mix(in srgb,#4688dc 10%,var(--surface))}
+.runtime-source{color:#9299a4;background:color-mix(in srgb,#9299a4 9%,var(--surface))}
+.editor-runtime-row,.preview-runtime-row{display:flex;align-items:center;min-height:34px;padding:4px 12px;border-bottom:1px solid var(--border-soft);background:var(--surface)}
+.preview-scope-control{display:flex;flex-direction:column;gap:6px;padding:8px 12px;border-bottom:1px solid var(--border-soft);background:var(--surface-2)}
+.preview-scope-switch{display:flex;gap:6px}
+.preview-scope-switch button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text-2);font:inherit;font-size:10px;cursor:pointer}
+.preview-scope-switch button.active{border-color:color-mix(in srgb,var(--accent) 60%,var(--border));background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--text)}
+.preview-scope-switch button:disabled{opacity:.48;cursor:not-allowed}
+.preview-scope-label{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;color:var(--muted);font-size:9px;line-height:1.5}
+.preview-scope-label button{flex:none;min-height:34px;padding:0 10px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:8px;background:transparent;color:var(--accent);font:inherit;font-weight:700;cursor:pointer}
+.build-progress{display:grid;gap:7px;margin-top:10px;padding:10px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
+.build-progress-copy{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--text-2);font-size:10px}
+.build-progress-copy b{flex:none;color:var(--accent);font:700 13px var(--font-mono);direction:ltr}
+.build-progress-track{height:7px;overflow:hidden;border-radius:99px;background:color-mix(in srgb,var(--muted) 20%,transparent)}
+.build-progress-track span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#79b54d,#a9ec76);transition:width .25s ease}
+@media(max-width:700px){.editor-runtime-row,.preview-runtime-row{min-height:40px;padding-inline:10px}.preview-scope-control{padding:7px 9px}.preview-scope-switch button{min-height:44px;flex:1}.preview-scope-label{align-items:flex-start}.preview-scope-label button{min-height:40px}}
+
+
+/* Final mobile build-review and isolated project presentation */
+.modal-backdrop{z-index:10000!important;background:rgba(5,9,14,.78)!important;backdrop-filter:blur(7px)}
+.icon-library-backdrop{z-index:10010!important}
+.tree-heading{align-items:center;flex-wrap:wrap;gap:5px}
+.tree-heading>span{flex:1 0 100%;color:var(--text);font-weight:700}
+.tree-actions{flex:1 1 100%;justify-content:flex-end;gap:3px;flex-wrap:wrap}
+.tree-project-root{display:flex;align-items:center;gap:7px;min-height:36px;margin:2px 4px 8px;padding:5px 9px;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--border));border-radius:9px;background:color-mix(in srgb,var(--accent) 6%,var(--surface-2));color:var(--accent)}
+.tree-project-root>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:11px;font-weight:700}
+.tree-project-root small{margin-inline-start:auto;color:var(--muted);font-size:9px;white-space:nowrap}
+.network-consent{position:relative;z-index:4;display:flex!important;align-items:center;gap:8px;min-height:36px!important;margin:5px 9px!important;padding:4px 8px!important;border-radius:9px!important}
+.network-consent>div{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font-size:10px}
+.network-consent>div svg{flex:none}
+.network-consent>div span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.network-consent>small{display:none!important}
+.network-consent>button{flex:none;min-height:30px!important;padding:0 9px!important;font-size:9px!important;white-space:nowrap}
+.network-domain-details{position:relative;flex:none;color:var(--muted);font-size:9px}
+.network-domain-details summary{min-height:28px;display:flex;align-items:center;padding:0 7px;border:1px solid var(--border);border-radius:7px;cursor:pointer;white-space:nowrap}
+.network-domain-details>div{position:absolute;z-index:20;top:calc(100% + 6px);inset-inline-end:0;display:grid;gap:5px;min-width:210px;max-width:min(80vw,360px);max-height:180px;overflow:auto;padding:9px;border:1px solid var(--border);border-radius:9px;background:var(--surface);box-shadow:0 12px 32px rgba(0,0,0,.25)}
+.network-domain-details code{overflow-wrap:anywhere;color:var(--text-2);font:10px var(--font-mono);direction:ltr;text-align:left}
+.apk-pretest,.apk-language-coverage,.apk-build-audit{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0;padding:10px 11px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2)}
+.apk-pretest>div:first-child,.apk-language-coverage{min-width:0}
+.apk-pretest>div:first-child{display:flex;flex-direction:column;gap:4px}
+.apk-pretest b,.apk-language-coverage>b{color:var(--text);font-size:11px}
+.apk-pretest small,.apk-language-coverage small{display:block;color:var(--muted);font-size:9px;line-height:1.6}
+.apk-pretest-actions{display:flex;flex:none;gap:5px}
+.apk-pretest-actions .secondary-button{min-height:38px;white-space:nowrap}
+.apk-language-coverage{align-items:flex-start;flex-direction:column;gap:5px}
+.apk-language-coverage>span{color:var(--text-2);font-size:10px;line-height:1.6;overflow-wrap:anywhere}
+.apk-build-audit{justify-content:flex-start;border-color:color-mix(in srgb,#35a86b 42%,var(--border));background:color-mix(in srgb,#35a86b 8%,var(--surface))}
+.apk-build-audit>svg{flex:none;color:#35a86b}
+.apk-build-audit>div{min-width:0;display:flex;flex:1;flex-direction:column;gap:4px}
+.apk-build-audit b{color:var(--text);font-size:11px}
+.apk-build-audit small{color:var(--text-2);font-size:9px;line-height:1.55;overflow-wrap:anywhere}
+.apk-build-audit>button{flex:none;min-height:38px;white-space:nowrap}
+@media(max-width:720px){
+  .topbar{min-height:54px;height:auto;padding:5px 8px;gap:5px}
+  .brand-group{min-width:0;flex:1;gap:6px}
+  .brand-divider{display:none}
+  .brand{flex:none;gap:5px;font-size:12px}
+  .project-switcher{min-width:0;max-width:96px;min-height:42px;padding:0 6px;gap:4px}
+  .project-switcher>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .top-actions{flex:none;gap:3px}
+  .top-actions .icon-button{width:40px;height:42px;min-width:40px;min-height:42px}
+  .top-actions .action-divider{display:none}
+  .export-button{width:40px;min-width:40px;height:42px;min-height:42px;justify-content:center;padding:0}
+  .export-button>span{display:none}
+  .apk-button:not(.large){min-width:54px;min-height:42px;justify-content:center;gap:4px;padding:0 8px;font-size:11px}
+  .network-consent{min-height:34px!important;margin:4px 7px!important;padding:3px 7px!important;gap:5px}
+  .network-consent>div{font-size:9px}
+  .network-domain-details summary{min-height:28px;padding-inline:5px;font-size:8px}
+  .tree-actions .tiny-icon{width:38px;height:38px;min-width:38px;min-height:38px}
+  .tree-project-root{min-height:38px}
+  .apk-pretest{align-items:flex-start;flex-direction:column}
+  .apk-pretest-actions{width:100%}
+  .apk-pretest-actions button{flex:1;min-height:44px}
+  .apk-build-audit{align-items:flex-start;flex-wrap:wrap}
+  .apk-build-audit>button{min-height:44px;margin-inline-start:auto}
+}
+@media(max-width:390px){
+  .topbar{padding-inline:6px}
+  .brand>span:last-child{display:none}
+  .project-switcher{max-width:82px}
+  .top-actions .icon-button,.export-button{width:36px;min-width:36px}
+  .apk-button:not(.large){min-width:46px;padding-inline:5px}
+  .network-consent>div span{max-width:42vw}
+}
+@media(prefers-reduced-motion:reduce){.build-progress-track span{transition:none!important}}
+
+/* Accessible touch targets for phone workflows */
+.apk-dialog .icon-button,.apk-dialog .secondary-button,.apk-dialog-foot .apk-button{min-height:44px}
+.apk-dialog .icon-button{width:44px;min-width:44px;height:44px}
+.apk-pretest-actions .secondary-button{min-height:44px}
+.network-consent>button{min-height:44px!important}
+@media(max-width:720px){
+  .top-actions .icon-button,.export-button,.apk-button:not(.large){min-height:44px!important}
+  .top-actions .icon-button,.export-button{width:44px!important;min-width:44px!important}
+  .project-switcher{min-height:44px}
+  .tree-actions .tiny-icon{width:44px;height:44px;min-width:44px;min-height:44px}
+  .tree-row .tiny-icon{width:44px;height:44px;min-width:44px;min-height:44px}
+}
+@media(max-width:390px){.top-actions .icon-button,.export-button{width:44px!important;min-width:44px!important}.apk-button:not(.large){min-height:44px!important}}
+
+@media(max-width:720px){.mobile-tabs button,.bottom-actions button{min-height:44px}}

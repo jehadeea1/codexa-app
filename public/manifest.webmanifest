@@ -1,0 +1,13 @@
+{
+  "name": "CODEXA — استوديو البرمجة",
+  "short_name": "CODEXA",
+  "description": "استوديو برمجة عربي، بواجهة تركز على الهاتف والمعاينة المباشرة.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#10130f",
+  "theme_color": "#10130f",
+  "icons": [{"src":"/codexa-mark.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
