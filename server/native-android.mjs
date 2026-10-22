@@ -9,7 +9,7 @@ const MAX_PROJECT_BYTES = 20 * 1024 * 1024;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_FILES = 500;
 const MAX_LOG_BYTES = 40_000;
-const BUILD_TIMEOUT_MS = 240_000;
+const BUILD_TIMEOUT_MS = 360_000;
 const ANDROID_NS = 'http://schemas.android.com/apk/res/android';
 
 function failure(message, status = 400) {
@@ -31,7 +31,7 @@ function validateIcon(value, expectedSize = 512) {
 }
 
 export function validateNativeProject(input) {
-  if (!input || input.consent !== true) throw failure('لم تصل موافقة صريحة على إرسال ملفات المشروع. ', 403);
+  if (!input || input.consent !== true) throw failure('لم تصل موافقة صريحة على إرسال ملفات المشروع.', 403);
   if (typeof input.projectId !== 'string' || input.projectId.length < 1 || input.projectId.length > 120) throw failure('معرّف المشروع غير صالح.');
   if (typeof input.appName !== 'string' || !input.appName.trim() || input.appName.length > 32 || /[\u0000-\u001f\u007f]/.test(input.appName)) throw failure('اسم التطبيق غير صالح (الحد الأقصى 32 حرفاً).');
   if (typeof input.packageId !== 'string' || !/^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*){1,6}$/.test(input.packageId)) throw failure('معرّف حزمة Android غير صالح.');
@@ -156,7 +156,19 @@ async function writeNativeProject(root, project, report) {
   await mkdir(appRoot, { recursive: true });
   await writePath(root, 'settings.gradle', `pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }\ndependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }\nrootProject.name = 'CODEXA-Native'\ninclude ':app'\n`);
   await writePath(root, 'build.gradle', `plugins {\n    id 'com.android.application' version '8.6.1' apply false\n    id 'org.jetbrains.kotlin.android' version '2.0.20' apply false\n}\n`);
-  await writePath(root, 'gradle.properties', `org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8\norg.gradle.parallel=false\norg.gradle.caching=true\nandroid.useAndroidX=true\n`);
+  
+  // تحسين إعدادات gradle.properties لمنع استهلاك الذاكرة وحل خطأ البروكسي والسوكيت الداخلي
+  const gradleProps = [
+    'org.gradle.jvmargs=-Xmx384m -XX:+UseSerialGC -Dfile.encoding=UTF-8',
+    'org.gradle.daemon=false',
+    'org.gradle.parallel=false',
+    'org.gradle.caching=false',
+    'android.useAndroidX=true',
+    'systemProp.http.nonProxyHosts=localhost|127.0.0.1|*.render.com',
+    'systemProp.https.nonProxyHosts=localhost|127.0.0.1|*.render.com',
+  ].join('\n');
+  await writePath(root, 'gradle.properties', `${gradleProps}\n`);
+
   const hasKotlin = project.files.some((file) => /\.kt$/i.test(file.path));
   const appGradle = `plugins {\n    id 'com.android.application'\n    ${hasKotlin ? "id 'org.jetbrains.kotlin.android'" : '// Java-only project'}\n}\n\nandroid {\n    namespace '${project.packageId}'\n    compileSdk 35\n    defaultConfig {\n        applicationId '${project.packageId}'\n        minSdk 23\n        targetSdk 35\n        versionCode 1\n        versionName '1.0.0'\n    }\n    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }\n    ${hasKotlin ? 'kotlinOptions { jvmTarget = \'1.8\' }' : ''}\n}\n`;
   await writePath(root, 'app/build.gradle', appGradle.replace('compileSdk 35', "compileSdk 35\n    buildToolsVersion '35.0.0'"));
@@ -225,6 +237,8 @@ function runGradle(gradle, args, cwd, { uid, gid, home, sdk, report }) {
       ANDROID_SDK_ROOT: sdk,
       GRADLE_USER_HOME: path.join(home, '.gradle'),
       CI: 'true',
+      NO_PROXY: 'localhost,127.0.0.1',
+      no_proxy: 'localhost,127.0.0.1',
     };
     const options = { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true };
     if (Number.isInteger(uid) && Number.isInteger(gid)) { options.uid = uid; options.gid = gid; }
@@ -293,7 +307,7 @@ export async function buildNativeApk(project, options) {
     await mkdir(path.join(builderHome, '.gradle'), { recursive: true });
     await chownTree(temp, uid, gid);
     report('يبدأ Gradle الآن ببناء التطبيق وإحضار إضافات Android المطلوبة عند أول تشغيل.');
-    await runGradle(gradle, ['--no-daemon', '--console=plain', '--stacktrace', ':app:assembleDebug'], temp, { uid, gid, home: builderHome, sdk, report });
+    await runGradle(gradle, ['--no-daemon', '-Dorg.gradle.daemon=false', '--console=plain', ':app:assembleDebug'], temp, { uid, gid, home: builderHome, sdk, report });
     report('اكتمل التجميع؛ تحزيم الموارد جارٍ التحقق منه.');
     const apkPath = path.join(temp, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
     const info = await stat(apkPath).catch(() => null);
